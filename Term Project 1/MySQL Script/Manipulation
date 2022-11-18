@@ -1,0 +1,267 @@
+-- Creating the analytical data store 1
+-- Extracting and Combining ID/Name, Rating, and Cuisine/Preference data from 5 tables
+DROP PROCEDURE IF EXISTS CreateCuisinePreferenceStore;
+
+DELIMITER //
+
+CREATE PROCEDURE CreateCuisinePreferenceStore()
+BEGIN
+
+	DROP TABLE IF EXISTS CuisinePreference;
+
+	CREATE TABLE CuisinePreference AS
+	SELECT distinct
+       ratings.Consumer_ID, 
+       consumer_preferences.Preferred_Cuisine As Preference,
+       ratings.Overall_Rating AS Overall,
+	   ratings.Food_Rating AS Food,
+	   ratings.Service_Rating As Service,
+       ratings.Restaurant_ID AS Restaurant_ID,
+       restaurants.Name AS Name,
+       restaurant_cuisines.Cuisine
+	FROM
+		ratings
+	left JOIN
+		consumer_preferences USING (Consumer_ID)
+	left join
+		restaurant_cuisines using (Restaurant_ID)
+    left join
+		consumers using (Consumer_ID)
+	left join
+		restaurants using (Restaurant_ID)
+	ORDER BY 
+        Consumer_ID,
+        Restaurant_ID;
+END //
+DELIMITER ;
+
+
+CALL CreateCuisinePreferenceStore();
+select * from CuisinePreference;
+
+
+-- Stored Procedures 1
+-- Get restaurant rating when any Ciusine meets Preferences of consumers
+DROP PROCEDURE IF EXISTS GetFoodRatingByPreferedCuisine;
+
+DELIMITER //
+
+CREATE PROCEDURE GetFoodRatingByPreferedCuisine(
+	IN Cuisine_cat VARCHAR(16)
+)
+BEGIN   
+	SELECT Restaurant_ID, Name, Cuisine, Preference, AVG(Overall) as Avg_rating, AVG(Food) as Avg_food,
+			AVG(Service) as Avg_service, Count(Name) as Number_of_rating
+ 		FROM CuisinePreference where Cuisine = Cuisine_cat and Preference = Cuisine_cat group by Name
+        order by Avg_food desc;
+END //
+DELIMITER ;
+
+
+CALL GetFoodRatingByPreferedCuisine('Mexican');
+	-- Most restaurans who serve Mexican food can satisfy Mexican-prefered consumer with food 
+CALL GetFoodRatingByPreferedCuisine('American');
+	-- Half consumers who prefer American food are satisfied with food provided by restaurans who serve American
+CALL GetFoodRatingByPreferedCuisine('Japanese');
+	-- All restaurans who serve Japanese food can satisfy Japanese-prefered consumer with food
+
+
+
+-- Creating the analytical data store 2
+-- Extracting and Combining ID/Name, Rating, Price, and Alcohol data from 3 tables
+DROP PROCEDURE IF EXISTS CreatePriceAlcoholStore;
+
+DELIMITER //
+
+CREATE PROCEDURE CreatePriceAlcoholStore()
+BEGIN
+
+	DROP TABLE IF EXISTS PriceAlcohol;
+
+	CREATE TABLE PriceAlcohol AS
+	SELECT
+       ratings.Consumer_ID, 
+       consumers.Budget As Consumer_Budget,
+       consumers.Drink_Level,
+       ratings.Overall_Rating AS Overall,
+	   ratings.Food_Rating AS Food,
+	   ratings.Service_Rating As Service,
+       ratings.Restaurant_ID AS Restaurant_ID,
+       restaurants.Name AS Name,
+       restaurants.Price,
+       restaurants.Alcohol_Service
+	FROM
+		ratings
+	left JOIN
+		consumers USING (Consumer_ID)
+	left join
+		restaurants using (Restaurant_ID)
+	ORDER BY 
+        Consumer_ID,
+        Restaurant_ID;
+END //
+DELIMITER ;
+
+
+CALL CreatePriceAlcoholStore();
+select * from PriceAlcohol;
+
+
+-- Stored Procedures 2
+-- Does the gap btween prices of restaurants and budgets of consumers affect the ratings?
+DROP PROCEDURE IF EXISTS GetRatingByPriceAndBudget;
+
+DELIMITER //
+
+CREATE PROCEDURE GetRatingByPriceAndBudget(
+	IN Price_input VARCHAR(16)
+)
+BEGIN   
+	SELECT Price, consumer_budget,
+			AVG(Overall) as Avg_rating, AVG(Food) as Avg_food,
+			AVG(Service) as Avg_service, Count(Name) as Number_of_rating
+ 		FROM PriceAlcohol where Price = Price_input group by consumer_budget
+        order by Avg_rating desc;
+END //
+DELIMITER ;
+
+
+CALL GetRatingByPriceAndBudget('Low');
+	-- Consumers having low budget are usually dissatisfied with restaurants who charge medium price
+CALL GetRatingByPriceAndBudget('Medium');
+	-- Most consumers having medium budget are satified with restaurants who charge medium or high price
+CALL GetRatingByPriceAndBudget('High');
+	-- On the contrary, most consumers having high budget are satified with restaurants who charge medium price
+
+
+
+-- The trigger 1
+CREATE TABLE IF NOT EXISTS messages (message varchar(100) NOT NULL);
+
+DROP TRIGGER IF EXISTS New4CuisinePreference; 
+
+DELIMITER $$
+
+CREATE TRIGGER New4CuisinePreference
+AFTER INSERT
+ON ratings FOR EACH ROW
+BEGIN
+	INSERT INTO messages SELECT CONCAT('new rating: ', New.Consumer_ID);
+
+  	INSERT INTO CuisinePreference
+	SELECT distinct
+       ratings.Consumer_ID AS Consumer_ID, 
+       consumer_preferences.Preferred_Cuisine As Preference,
+       ratings.Overall_Rating AS Overall,
+	   ratings.Food_Rating AS Food,
+	   ratings.Service_Rating As Service,
+       ratings.Restaurant_ID AS Restaurant_ID,
+       restaurants.Name AS Name,
+       restaurant_cuisines.Cuisine AS Cuisine
+	FROM
+		ratings
+	left JOIN
+		consumer_preferences USING (Consumer_ID)
+	left join
+		restaurant_cuisines using (Restaurant_ID)
+    left join
+		consumers using (Consumer_ID)
+	left join
+		restaurants using (Restaurant_ID)
+	WHERE Consumer_ID = NEW.Consumer_ID	
+    ORDER BY 
+        Consumer_ID,
+        Restaurant_ID;
+        
+END $$
+
+DELIMITER ;
+
+
+-- The trigger 2
+DROP TRIGGER IF EXISTS New4PriceAlcohol; 
+
+DELIMITER $$
+
+CREATE TRIGGER New4PriceAlcohol
+AFTER INSERT
+ON ratings FOR EACH ROW
+BEGIN
+	INSERT INTO messages SELECT CONCAT('new rating: ', New.Consumer_ID);
+
+  	INSERT INTO PriceAlcohol
+	SELECT
+       ratings.Consumer_ID, 
+       consumers.Budget As Consumer_Budget,
+       consumers.Drink_Level,
+       ratings.Overall_Rating AS Overall,
+	   ratings.Food_Rating AS Food,
+	   ratings.Service_Rating As Service,
+       ratings.Restaurant_ID AS Restaurant_ID,
+       restaurants.Name AS Name,
+       restaurants.Price,
+       restaurants.Alcohol_Service
+	FROM
+		ratings
+    left join
+		consumers using (Consumer_ID)
+	left join
+		restaurants using (Restaurant_ID)
+	WHERE Consumer_ID = NEW.Consumer_ID	
+    ORDER BY 
+        Consumer_ID,
+        Restaurant_ID;
+        
+END $$
+
+DELIMITER ;
+
+
+-- Activating the trigger
+SELECT * FROM CuisinePreference ORDER BY Consumer_ID desc;
+SELECT * FROM PriceAlcohol ORDER BY Consumer_ID desc;
+
+Insert into consumers 
+values('U9999', 'TEST', 'TEST', 'TEST', 22, 101, 'TEST', 'TEST', 'TEST', 'TEST', 'TEST', 0, 'TEST','TEST');
+Insert into consumer_preferences values('U9999', 'TEST');
+Insert into restaurants  
+values('999999', 'TEST', 'TEST', 'TEST', 'TEST', 0, 23, -99, 'TEST', 'TEST', 'TEST', 'No', 'TEST', 'TEST');
+Insert into restaurant_cuisines values('999999', 'TEST');
+INSERT INTO ratings VALUES("U9999", "999999", 1, 1, 1);
+
+SELECT * FROM CuisinePreference ORDER BY Consumer_ID desc;
+SELECT * FROM PriceAlcohol ORDER BY Consumer_ID desc;
+
+
+
+-- Data marts with Views
+-- Focus on rating of relation between alcohol service and consumer's drinking level
+DROP VIEW IF EXISTS RestaurantsWithoutAlcohol;
+
+CREATE VIEW RestaurantsWithoutAlcohol AS
+SELECT Consumer_ID, Consumer_Budget, Drink_Level,
+       Overall, Food, Service,
+       Restaurant_ID, Name, Alcohol_Service 
+       FROM PriceAlcohol WHERE Alcohol_Service = 'None';
+
+Select * from RestaurantsWithoutAlcohol;
+
+
+-- Rating of restaurants without alocohol service of abstemious consumers
+Select Restaurant_ID, Name, Alcohol_Service, Drink_Level as Consumer_drink_level,
+       AVG(Overall) as AVG_Overall,
+	   AVG(Food) as AVG_Food,
+	   AVG(Service) as AVG_Service
+       FROM RestaurantsWithoutAlcohol WHERE Drink_Level = 'Abstemious' group by name order by name;
+Select AVG(Overall) as AVG_Overall FROM RestaurantsWithoutAlcohol WHERE Drink_Level = 'Abstemious';
+	-- Most abstemious consumers are satisfied with restaurants without alocohol service
+
+-- Rating of restaurants without alocohol service of not abstemious consumers
+Select Restaurant_ID, Name, Alcohol_Service, Drink_Level as Consumer_drink_level,
+       AVG(Overall) as AVG_Overall,
+	   AVG(Food) as AVG_Food,
+	   AVG(Service) as AVG_Service
+       FROM RestaurantsWithoutAlcohol WHERE Drink_Level != 'Abstemious' group by name order by name;
+Select AVG(Overall) as AVG_Overall FROM RestaurantsWithoutAlcohol WHERE Drink_Level != 'Abstemious';
+	-- It seems not abstemious consumers are not satisfied with restaurants without alocohol service
+    -- AVG overall rating is lower here
