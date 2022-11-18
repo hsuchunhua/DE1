@@ -1,1 +1,12 @@
+My raw data are Restaurant ratings in Mexico by real consumers from 2012 from Mavenan Alytics Data Playground.
+The raw data contain 5 tables: Consumers, Consumer Preference, Restaurants, Restaurant Cuisine, and Ratings.
+In addition to given ID number of consumers/restaurants, the data also include location, service the restaurants provide, living habits, and budget/price, etc.   
+Thus, I would like to know:
+1. If the cuisine provided by restaurant and the preference of consumers are the same, how's the rating of the restaurants? Are those consumer satisfied with food?
+  By creating analytical data store and use stored procedures to select spesific cuisine/preference.
+2. If the price levels are (or not) meet the budgets of consumers, Would consumers be satisfied with food, service, and overall of the restaurants?
+  By creating another analytical data store and use another stored procedures to select each price level.
+3. If restaurants offer (or don't offer) alcohol, What are the genaral ratings from consumers who like to drink and who seldom drink, respectively?
+  By creating a data marts with views and select it under conditions.
 
+Between 2 and 3, I have triggers to update analytical data stores if there is any new ratings.
